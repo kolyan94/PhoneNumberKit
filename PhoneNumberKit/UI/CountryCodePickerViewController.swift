@@ -5,7 +5,7 @@ import UIKit
 
 @available(iOS 11.0, *)
 public protocol CountryCodePickerDelegate: AnyObject {
-    func countryCodePickerViewControllerDidPickCountry(_ country: CountryCodePickerViewController.Country)
+    func countryCodePickerViewControllerDidPickCountry(picker: CountryCodePickerViewController, country: CountryCodePickerViewController.Country)
 }
 
 @available(iOS 11.0, *)
@@ -187,7 +187,9 @@ public class CountryCodePickerViewController: UITableViewController {
 
     public override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         let country = self.country(for: indexPath)
-        delegate?.countryCodePickerViewControllerDidPickCountry(country)
+        if isFiltering { searchController.dismiss(animated: false) }
+
+        delegate?.countryCodePickerViewControllerDidPickCountry(picker: self, country: country)
         tableView.deselectRow(at: indexPath, animated: true)
     }
 }

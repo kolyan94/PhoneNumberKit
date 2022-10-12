@@ -316,7 +316,8 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
         if isEditing, !(self.text ?? "").isEmpty { return } // No need to update a placeholder while the placeholder isn't showing
 
         let format = self.withPrefix ? PhoneNumberFormat.international : .national
-        let example = self.phoneNumberKit.getFormattedExampleNumber(forCountry: self.currentRegion, withFormat: format, withPrefix: self.withPrefix) ?? "12345678"
+        var example = self.phoneNumberKit.getFormattedExampleNumber(forCountry: self.currentRegion, withFormat: format, withPrefix: self.withPrefix) ?? "12345678"
+        if example.hasPrefix("0") { example.removeFirst() }
         let font = self.font ?? UIFont.preferredFont(forTextStyle: .body)
         let ph = NSMutableAttributedString(string: example, attributes: [.font: font])
 
@@ -528,8 +529,7 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
 
 @available(iOS 11.0, *)
 extension PhoneNumberTextField: CountryCodePickerDelegate {
-
-    public func countryCodePickerViewControllerDidPickCountry(_ country: CountryCodePickerViewController.Country) {
+    public func countryCodePickerViewControllerDidPickCountry(picker: CountryCodePickerViewController, country: CountryCodePickerViewController.Country) {
         text = isEditing ? "+" + country.prefix : ""
         _defaultRegion = country.code
         partialFormatter.defaultRegion = country.code
@@ -539,7 +539,7 @@ extension PhoneNumberTextField: CountryCodePickerDelegate {
         if let nav = containingViewController?.navigationController, !PhoneNumberKit.CountryCodePicker.forceModalPresentation {
             nav.popViewController(animated: true)
         } else {
-            containingViewController?.dismiss(animated: true)
+            picker.dismiss(animated: true)
         }
     }
 }
