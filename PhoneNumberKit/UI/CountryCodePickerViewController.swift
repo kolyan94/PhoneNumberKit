@@ -8,16 +8,66 @@ public protocol CountryCodePickerDelegate: AnyObject {
     func countryCodePickerViewControllerDidPickCountry(picker: CountryCodePickerViewController, country: CountryCodePickerViewController.Country)
 }
 
+public protocol CountryCodePickerCell: UITableViewCell {
+    func setup(flag: String, name: String, code: String)
+}
+
+@available(iOS 11.0, *)
+public struct CountryCodePickerConfiguration {
+    public let screenTitle: String
+    public let screenBgColor: UIColor
+    public let searchPlaceholder: String
+    public let searchPlaceholderFont: UIFont
+    public let cell: CountryCodePickerCell.Type
+    public let cancelTitle: String
+
+    public static let common: CountryCodePickerConfiguration = {
+        CountryCodePickerConfiguration(
+            screenTitle: NSLocalizedString(
+                "PhoneNumberKit.CountryCodePicker.Title",
+                value: "Choose your country",
+                comment: "Title of CountryCodePicker ViewController"
+            ),
+            screenBgColor: UIColor.white,
+            searchPlaceholder: NSLocalizedString(
+                "PhoneNumberKit.CountryCodePicker.SearchBarPlaceholder",
+                value: "Search Country Codes",
+                comment: "Placeholder for country code search field"
+            ),
+            searchPlaceholderFont: UIFont.systemFont(ofSize: 14),
+            cell: CountryCodePickerViewController.Cell.self,
+            cancelTitle: "Cancel"
+        )
+    }()
+
+    public init(
+        screenTitle: String,
+        screenBgColor: UIColor,
+        searchPlaceholder: String,
+        searchPlaceholderFont: UIFont,
+        cell: CountryCodePickerCell.Type,
+        cancelTitle: String
+    ) {
+        self.screenTitle = screenTitle
+        self.screenBgColor = screenBgColor
+        self.searchPlaceholder = searchPlaceholder
+        self.searchPlaceholderFont = searchPlaceholderFont
+        self.cell = cell
+        self.cancelTitle = cancelTitle
+    }
+}
+
 @available(iOS 11.0, *)
 public class CountryCodePickerViewController: UITableViewController {
 
+    private let configuration: CountryCodePickerConfiguration
+
     lazy var searchController: UISearchController = {
         let searchController = UISearchController(searchResultsController: nil)
-        searchController.searchBar.placeholder = NSLocalizedString(
-            "PhoneNumberKit.CountryCodePicker.SearchBarPlaceholder",
-            value: "Search Country Codes",
-            comment: "Placeholder for country code search field")
-
+        searchController.searchBar.placeholder = configuration.searchPlaceholder
+        if #available(iOS 13.0, *) {
+            searchController.searchBar.searchTextField.font = configuration.searchPlaceholderFont
+        }
         return searchController
     }()
 
@@ -27,49 +77,21 @@ public class CountryCodePickerViewController: UITableViewController {
 
     var shouldRestoreNavigationBarToHidden = false
 
-    var hasCurrent = true
-    var hasCommon = true
-
     lazy var allCountries = phoneNumberKit
         .allCountries()
         .compactMap({ Country(for: $0, with: self.phoneNumberKit) })
         .sorted(by: { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
 
-    lazy var countries: [[Country]] = {
-        let countries = allCountries
-            .reduce([[Country]]()) { collection, country in
-                var collection = collection
-                guard var lastGroup = collection.last else { return [[country]] }
-                let lhs = lastGroup.first?.name.folding(options: .diacriticInsensitive, locale: nil)
-                let rhs = country.name.folding(options: .diacriticInsensitive, locale: nil)
-                if lhs?.first == rhs.first {
-                    lastGroup.append(country)
-                    collection[collection.count - 1] = lastGroup
-                } else {
-                    collection.append([country])
-                }
-                return collection
-            }
-
-        let popular = commonCountryCodes.compactMap({ Country(for: $0, with: phoneNumberKit) })
-
-        var result: [[Country]] = []
-        // Note we should maybe use the user's current carrier's country code?
-        if hasCurrent, let current = Country(for: PhoneNumberKit.defaultRegionCode(), with: phoneNumberKit) {
-            result.append([current])
-        }
-        hasCommon = hasCommon && !popular.isEmpty
-        if hasCommon {
-            result.append(popular)
-        }
-        return result + countries
-    }()
-
     var filteredCountries: [Country] = []
 
     public weak var delegate: CountryCodePickerDelegate?
 
-    lazy var cancelButton = UIBarButtonItem(barButtonSystemItem: .cancel, target: self, action: #selector(dismissAnimated))
+    lazy var cancelButton = UIBarButtonItem(
+        title: configuration.cancelTitle,
+        style: .plain,
+        target: self,
+        action: #selector(dismissAnimated)
+    )
 
     /**
      Init with a phone number kit instance. Because a PhoneNumberKit initialization is expensive you can must pass a pre-initialized instance to avoid incurring perf penalties.
@@ -79,10 +101,13 @@ public class CountryCodePickerViewController: UITableViewController {
      */
     public init(
         phoneNumberKit: PhoneNumberKit,
-        commonCountryCodes: [String] = PhoneNumberKit.CountryCodePicker.commonCountryCodes)
+        commonCountryCodes: [String] = PhoneNumberKit.CountryCodePicker.commonCountryCodes,
+        configuration: CountryCodePickerConfiguration
+    )
     {
         self.phoneNumberKit = phoneNumberKit
         self.commonCountryCodes = commonCountryCodes
+        self.configuration = configuration
         super.init(style: .grouped)
         self.commonInit()
     }
@@ -90,14 +115,18 @@ public class CountryCodePickerViewController: UITableViewController {
     required init?(coder aDecoder: NSCoder) {
         self.phoneNumberKit = PhoneNumberKit()
         self.commonCountryCodes = PhoneNumberKit.CountryCodePicker.commonCountryCodes
+        self.configuration = CountryCodePickerConfiguration.common
         super.init(coder: aDecoder)
         self.commonInit()
     }
 
     func commonInit() {
-        self.title = NSLocalizedString("PhoneNumberKit.CountryCodePicker.Title", value: "Choose your country", comment: "Title of CountryCodePicker ViewController")
-
-        tableView.register(Cell.self, forCellReuseIdentifier: Cell.reuseIdentifier)
+        self.title = configuration.screenTitle
+        self.view.backgroundColor = configuration.screenBgColor
+        tableView.estimatedRowHeight = 66
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.separatorStyle = .none
+        tableView.register(configuration.cell, forCellReuseIdentifier: Cell.reuseIdentifier)
         searchController.searchResultsUpdater = self
         searchController.obscuresBackgroundDuringPresentation = false
         searchController.searchBar.backgroundColor = .clear
@@ -130,59 +159,22 @@ public class CountryCodePickerViewController: UITableViewController {
     }
 
     func country(for indexPath: IndexPath) -> Country {
-        isFiltering ? filteredCountries[indexPath.row] : countries[indexPath.section][indexPath.row]
-    }
-
-    public override func numberOfSections(in tableView: UITableView) -> Int {
-        isFiltering ? 1 : countries.count
+        isFiltering ? filteredCountries[indexPath.row] : allCountries[indexPath.row]
     }
 
     public override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        isFiltering ? filteredCountries.count : countries[section].count
+        isFiltering ? filteredCountries.count : allCountries.count
     }
 
     public override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: Cell.reuseIdentifier, for: indexPath)
         let country = self.country(for: indexPath)
 
-        cell.textLabel?.text = country.prefix + " " + country.flag
-        cell.detailTextLabel?.text = country.name
-
-        cell.textLabel?.font = .preferredFont(forTextStyle: .callout)
-        cell.detailTextLabel?.font = .preferredFont(forTextStyle: .body)
+        if let cell = cell as? CountryCodePickerCell {
+            cell.setup(flag: country.flag, name: country.name, code: country.prefix)
+        }
 
         return cell
-    }
-
-    public override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        if isFiltering {
-            return nil
-        } else if section == 0, hasCurrent {
-            return NSLocalizedString("PhoneNumberKit.CountryCodePicker.Current", value: "Current", comment: "Name of \"Current\" section")
-        } else if section == 0, !hasCurrent, hasCommon {
-            return NSLocalizedString("PhoneNumberKit.CountryCodePicker.Common", value: "Common", comment: "Name of \"Common\" section")
-        } else if section == 1, hasCurrent, hasCommon {
-            return NSLocalizedString("PhoneNumberKit.CountryCodePicker.Common", value: "Common", comment: "Name of \"Common\" section")
-        }
-        return countries[section].first?.name.first.map(String.init)
-    }
-
-    public override func sectionIndexTitles(for tableView: UITableView) -> [String]? {
-        guard !isFiltering else {
-            return nil
-        }
-        var titles: [String] = []
-        if hasCurrent {
-            titles.append("•") // NOTE: SFSymbols are not supported otherwise we would use 􀋑
-        }
-        if hasCommon {
-            titles.append("★") // This is a classic unicode star
-        }
-        return titles + countries.suffix(countries.count - titles.count).map { group in
-            group.first?.name.first
-                .map(String.init)?
-                .folding(options: .diacriticInsensitive, locale: nil) ?? ""
-        }
     }
 
     public override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -252,7 +244,13 @@ public extension CountryCodePickerViewController {
         }
     }
 
-    class Cell: UITableViewCell {
+    class Cell: UITableViewCell, CountryCodePickerCell {
+        public func setup(flag: String, name: String, code: String) {
+            textLabel?.text = code + " " + flag
+            detailTextLabel?.text = name
+            textLabel?.font = .preferredFont(forTextStyle: .callout)
+            detailTextLabel?.font = .preferredFont(forTextStyle: .body)
+        }
 
         static let reuseIdentifier = "Cell"
 

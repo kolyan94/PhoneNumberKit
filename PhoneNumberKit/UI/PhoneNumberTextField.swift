@@ -41,6 +41,11 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
 
     private lazy var _defaultRegion: String = PhoneNumberKit.defaultRegionCode()
 
+    @available(iOS 11.0, *)
+    open var pickerConfig: CountryCodePickerConfiguration {
+        CountryCodePickerConfiguration.common
+    }
+
     /// Override region to set a custom region. Automatically uses the default region code.
     open var defaultRegion: String {
         get {
@@ -339,7 +344,10 @@ open class PhoneNumberTextField: UITextField, UITextFieldDelegate {
     @available(iOS 11.0, *)
     @objc func didPressFlagButton() {
         guard withDefaultPickerUI else { return }
-        let vc = CountryCodePickerViewController(phoneNumberKit: phoneNumberKit)
+        let vc = CountryCodePickerViewController(
+            phoneNumberKit: phoneNumberKit,
+            configuration: pickerConfig
+        )
         vc.delegate = self
         if let nav = containingViewController?.navigationController, !PhoneNumberKit.CountryCodePicker.forceModalPresentation {
             nav.pushViewController(vc, animated: true)
